@@ -1044,7 +1044,7 @@ def package_ensure_apt(package, update=False):
 				package_update_apt(p)
 			res[p]=True
 	if len(res) == 1:
-		return res.values()[0]
+		return list(res.values())[0]
 	else:
 		return res
 
