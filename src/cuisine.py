@@ -743,6 +743,51 @@ def file_write(location, content, mode=None, owner=None, group=None, sudo=None, 
         file_attribs(location, mode=mode, owner=owner, group=group)
 
 @logged
+def file_write_simple(location, content, mode=None, owner=None, group=None, sudo=None, check=True):
+    """Writes the given content to the file at the given remote
+    location, optionally setting mode/owner/group."""
+    # FIXME: Big files are never transferred properly!
+    # Gets the content signature and write it to a secure tempfile
+    use_sudo       = sudo if sudo is not None else is_sudo()
+    if isinstance(content, six.text_type):
+        content = content.encode(errors='strict')
+    sig            = hashlib.md5(content).hexdigest()
+    fd, local_path = tempfile.mkstemp()
+    os.write(fd, content)
+    # Upload the content if necessary
+    if sig != file_md5(location):
+        if is_local():
+            with mode_sudo(use_sudo):
+                run('cp %s %s'%(shell_safe(local_path), shell_safe(location)))
+        else:
+            # FIXME: Put is not working properly, I often get stuff like:
+            # Fatal error: sudo() encountered an error (return code 1) while executing 'mv "3dcf7213c3032c812769e7f355e657b2df06b687" "/etc/authbind/byport/80"'
+            fabric.operations.put(local_path, location, use_sudo=use_sudo)
+            # Hides the output, which is especially important
+#             with fabric.context_managers.settings(
+#                 fabric.api.hide('stdout'),
+#                 warn_only=True,
+#                 **{MODE_SUDO: use_sudo}
+#             ):
+#                 # SEE: http://unix.stackexchange.com/questions/22834/how-to-uncompress-zlib-data-in-unix
+#                 # TODO: Make sure this openssl command works everywhere, maybe we should use a text_base64_decode?
+#                 result = run("echo '%s' | openssl base64 -A -d -out %s" % (base64.b64encode(content), shell_safe(location)))
+#                 if "openssl:Error" in result:
+#                     fabric.api.abort('cuisine.file_write("%s",...) failed because openssl does not support base64 command.' % (location))
+    # Remove the local temp file
+    os.fsync(fd)
+    os.close(fd)
+    os.unlink(local_path)
+    # Ensures that the signature matches
+    if check:
+        with mode_sudo(use_sudo):
+            file_sig = file_md5(location)
+        assert sig == file_sig, "File content does not matches file: %s, got %s, expects %s" % (location, repr(file_sig), repr(sig))
+    with mode_sudo(use_sudo):
+        file_attribs(location, mode=mode, owner=owner, group=group)
+
+
+@logged
 def file_ensure(location, mode=None, owner=None, group=None, scp=False):
     """Updates the mode/owner/group for the remote file at the given
     location."""
