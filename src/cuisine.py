@@ -386,11 +386,11 @@ def run_local(command, sudo=False, shell=True, pty=True, combine_stderr=None):
     # FIXME: This does not seem to stream
     def stdout_reader():
         for line in process.stdout:
-            if line: logging.debug(line.rstrip("\n").rstrip("\r"))
+            if line: logging.debug(line.rstrip(b'\n').rstrip(b'\r'))
             out.append(line)
     def stderr_reader():
         for line in process.stderr:
-            logging.error(line.rstrip("\n").rstrip("\r"))
+            logging.error(line.rstrip(b'\n').rstrip(b'\r'))
             err.append(line)
     t0 = threading.Thread(target=stdout_reader)
     t1 = threading.Thread(target=stderr_reader)
@@ -399,8 +399,10 @@ def run_local(command, sudo=False, shell=True, pty=True, combine_stderr=None):
     process.wait()
     t0.join()
     t1.join()
-    out = "".join(out)
-    err = "".join(err)
+    out = b"".join(out)
+    err = b"".join(err)
+    out = out.decode('utf-8')
+    err = err.decode('utf-8')
     # SEE: http://docs.fabfile.org/en/1.7/api/core/operations.html#fabric.operations.run
     # Wrap stdout string and add extra status attributes
     # SEE: fabric.operations._run_command. for the code below
@@ -696,6 +698,8 @@ def file_write(location, content, mode=None, owner=None, group=None, sudo=None, 
     # FIXME: Big files are never transferred properly!
     # Gets the content signature and write it to a secure tempfile
     use_sudo       = sudo if sudo is not None else is_sudo()
+    if isinstance(content, six.text_type):
+        content = content.encode(errors='strict')
     sig            = hashlib.md5(content).hexdigest()
     fd, local_path = tempfile.mkstemp()
     os.write(fd, content)
@@ -1503,12 +1507,17 @@ def user_remove(name, rmhome=None):
 
 def user_passwd_linux(name, passwd, encrypted_passwd=True):
     """Sets the given user password. Password is expected to be encrypted by default."""
-    encoded_password = base64.b64encode("%s:%s" % (name, passwd))
+    np_pair = "%s:%s" % (name, passwd)
+    if isinstance(np_pair, six.text_type):
+        np_pair = np_pair.encode(errors='replace')
+    encoded_password = base64.b64encode(np_pair)
     if encrypted_passwd:
         sudo("usermod -p '%s' %s" % (passwd,name))
     else:
         # NOTE: We use base64 here in case the password contains special chars
         # TODO: Make sure this openssl command works everywhere, maybe we should use a text_base64_decode?
+        if isinstance(encoded_password, six.binary_type):
+            encoded_password = encoded_password.decode()
         sudo("echo %s | openssl base64 -A -d | chpasswd" % (shell_safe(encoded_password)))
 
 def user_create_linux(name, passwd=None, home=None, uid=None, gid=None, shell=None,
