@@ -778,13 +778,13 @@ def file_write_simple(location, content, mode=None, owner=None, group=None, sudo
     os.fsync(fd)
     os.close(fd)
     os.unlink(local_path)
+    with mode_sudo(use_sudo):
+        file_attribs(location, mode=mode, owner=owner, group=group)
     # Ensures that the signature matches
     if check:
         with mode_sudo(use_sudo):
             file_sig = file_md5(location)
         assert sig == file_sig, "File content does not matches file: %s, got %s, expects %s" % (location, repr(file_sig), repr(sig))
-    with mode_sudo(use_sudo):
-        file_attribs(location, mode=mode, owner=owner, group=group)
 
 
 @logged
